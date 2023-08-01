@@ -1,0 +1,704 @@
+#include <SoftwareSerial.h>
+#include <Wire.h>
+#include <esp_now.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+
+ 
+
+// RE and DE Pins set the RS485 module
+// to Receiver or Transmitter mode
+#define RE 32
+#define DE 33
+
+ 
+
+constexpr char WIFI_SSID[] = "Peter's Phone";
+
+ 
+
+int32_t getWiFiChannel(const char *ssid) {
+  if (int32_t n = WiFi.scanNetworks()) {
+    for (uint8_t i=0; i<n; i++) {
+      if (!strcmp(ssid, WiFi.SSID(i).c_str())) {
+        return WiFi.channel(i);
+      }
+    }
+  }
+  return 0;
+}
+
+ 
+
+// Modbus RTU requests for reading NPK values
+
+ 
+
+const byte nitro[] = {0x01,0x03, 0x00, 0x1e, 0x00, 0x01, 0xe4, 0x0c};
+const byte phos[] = {0x01,0x03, 0x00, 0x1f, 0x00, 0x01, 0xb5, 0xcc};
+const byte pota[] = {0x01,0x03, 0x00, 0x20, 0x00, 0x01, 0x85, 0xc0};
+
+int _moisture,sensor_analog;
+const int sensor_pin = 34;  /* Soil moisture sensor O/P pin */
+
+ // A variable used to store NPK values
+byte values[11];
+
+ // Sets up a new SoftwareSerial object
+
+ 
+
+// Digital pins 10 and 11 should be used with a Mega or Mega 2560
+
+ SoftwareSerial mod(12, 13);
+//was R1 26, D1 27
+//R1 12, D1 13 for pcb
+
+
+ 
+
+/* REPLACE WITH YOUR RECEIVER MAC Address */
+
+ 
+
+uint8_t broadcastAddress[] = {0xEC, 0xDA, 0x3B, 0x61, 0xD4, 0xA8};
+
+ 
+
+/* B0:B2:1C:97:AF:20
+/* uint8_t slaveAddress[] = {0xB0, 0xB2, 0x1C, 0x97, 0xBC, 0x58};
+// Structure example to send data
+// Must match the receiver structure */
+
+typedef struct struct_message {
+byte nitrogen;
+byte phosphorous;
+byte potassium;
+int _moisture;
+} struct_message;
+
+ // Create a struct_message called myData
+
+ 
+
+struct_message myData;
+esp_now_peer_info_t peerInfo;
+
+ // callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+
+ 
+
+ 
+
+ 
+
+void setup() {
+  // Set the baud rate for the Serial port
+  Serial.begin(9600);
+// Set the baud rate for the SerialSoftware object
+
+ 
+
+  mod.begin(9600);
+
+ 
+
+ 
+
+ 
+
+ 
+
+  // Define pin modes for RE and DE
+
+ 
+
+  pinMode(RE, OUTPUT);
+
+ 
+
+  pinMode(DE, OUTPUT);
+
+ 
+
+ 
+
+ 
+
+  delay(500);
+
+ 
+
+ 
+
+ 
+
+ 
+
+  //ESP-NOW
+
+ 
+
+  // Init Serial Monitor //set refer to line 25
+
+ 
+
+ 
+
+ 
+
+  // Set device as a Wi-Fi Station
+
+ 
+
+  WiFi.mode(WIFI_STA);
+
+ 
+
+  int32_t channel = getWiFiChannel(WIFI_SSID);
+
+ 
+
+ 
+
+ 
+
+ 
+
+WiFi.printDiag(Serial); // Uncomment to verify channel number before
+
+ 
+
+esp_wifi_set_promiscuous(true);
+
+ 
+
+esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+
+ 
+
+esp_wifi_set_promiscuous(false);
+
+ 
+
+WiFi.printDiag(Serial); // Uncomment to verify channel change after
+
+ 
+
+ 
+
+ 
+
+ 
+
+  // Init ESP-NOW
+
+ 
+
+  if (esp_now_init() != ESP_OK) {
+
+ 
+
+    Serial.println("Error initializing ESP-NOW");
+
+ 
+
+    return;
+
+ 
+
+  }
+
+ 
+
+ 
+
+ 
+
+ 
+
+  // Once ESPNow is successfully Init, we will register for Send CB to
+
+ 
+
+  // get the status of Trasnmitted packet
+
+ 
+
+  esp_now_register_send_cb(OnDataSent);
+
+ 
+
+ 
+
+ 
+
+  // Register peer
+
+ 
+
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+
+ 
+
+  peerInfo.channel = 0;  
+
+ 
+
+  peerInfo.encrypt = false;
+
+ 
+
+ 
+
+ 
+
+  // Add peer        
+
+ 
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+
+ 
+
+    Serial.println("Failed to add peer");
+
+ 
+
+    return;
+
+ 
+
+  }
+
+ 
+
+}
+
+ 
+
+ 
+
+ 
+
+void loop() {
+
+ 
+
+  // Read values
+
+ 
+
+  byte val1,val2,val3;
+
+ 
+
+  val1 = nitrogen();
+
+ 
+
+  delay(250);
+
+ 
+
+  val2 = phosphorous();
+
+ 
+
+  delay(250);
+
+ 
+
+  val3 = potassium();
+
+ 
+
+  delay(250);
+
+ 
+
+ 
+
+ 
+
+ 
+
+  // Print values to the serial monitor
+
+ 
+
+  //TODO: extension if function goes here
+
+ 
+
+  //
+
+ 
+
+  Serial.print("Sensor_Nitrogen: ");
+
+ 
+
+  Serial.print(val1);
+
+ 
+
+  Serial.println(" mg/kg");
+
+ 
+
+  Serial.print("Sensor_Phosphorous: ");
+
+ 
+
+  Serial.print(val2);
+
+ 
+
+  Serial.println(" mg/kg");
+
+ 
+
+  Serial.print("Sensor_Potassium: ");
+
+ 
+
+  Serial.print(val3);
+
+ 
+
+  Serial.println(" mg/kg");
+
+ 
+
+ 
+
+ 
+
+ 
+
+  //moisture
+
+ 
+
+  sensor_analog = analogRead(sensor_pin);
+
+ 
+
+  _moisture = ( 100 - ( (sensor_analog/4095.00) * 100 ) );
+
+ 
+
+  Serial.print("Moisture = ");
+
+ 
+
+  Serial.print(_moisture);  /* Print Temperature on the serial window */
+
+ 
+
+  Serial.println("%");
+
+ 
+
+   /* Wait for 1000mS <-*/
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+  //ESP
+
+ 
+
+  // Set values to send
+
+ 
+
+  myData.nitrogen = val1;
+
+ 
+
+  myData.phosphorous = val2;
+
+ 
+
+  myData.potassium = val3;
+
+ 
+
+  myData._moisture = _moisture;
+
+ 
+
+ 
+
+ 
+
+  // Send message via ESP-NOW
+
+ 
+
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+
+ 
+
+   
+
+ 
+
+  if (result == ESP_OK) {
+
+ 
+
+    Serial.println("Sent with success");
+
+ 
+
+  }
+
+ 
+
+  else {
+
+ 
+
+    Serial.println("Error sending the data");
+
+ 
+
+  }
+
+ 
+
+  delay(2000);
+
+ 
+
+}
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+byte nitrogen(){
+
+ 
+
+  digitalWrite(DE,HIGH);
+
+ 
+
+  digitalWrite(RE,HIGH);
+
+ 
+
+  delay(10);
+
+ 
+
+  if(mod.write(nitro,sizeof(nitro))==8){
+
+ 
+
+    digitalWrite(DE,LOW);
+
+ 
+
+    digitalWrite(RE,LOW);
+
+ 
+
+    for(byte i=0;i<7;i++){
+
+ 
+
+    //Serial.print(mod.read(),HEX);
+
+ 
+
+    values[i] = mod.read();
+
+ 
+
+    Serial.print(values[i],HEX);
+
+ 
+
+    }
+
+ 
+
+    Serial.println();
+
+ 
+
+  }
+
+ 
+
+  return values[4];
+
+ 
+
+}
+
+ 
+
+ 
+
+ 
+
+byte phosphorous(){
+
+ 
+
+  digitalWrite(DE,HIGH);
+
+ 
+
+  digitalWrite(RE,HIGH);
+
+ 
+
+  delay(10);
+
+ 
+
+  if(mod.write(phos,sizeof(phos))==8){
+
+ 
+
+    digitalWrite(DE,LOW);
+
+ 
+
+    digitalWrite(RE,LOW);
+
+ 
+
+    for(byte i=0;i<7;i++){
+
+ 
+
+    //Serial.print(mod.read(),HEX);
+
+ 
+
+    values[i] = mod.read();
+
+ 
+
+    Serial.print(values[i],HEX);
+
+ 
+
+    }
+
+ 
+
+    Serial.println();
+
+ 
+
+  }
+
+ 
+
+  return values[4];
+
+ 
+
+}
+
+ 
+
+ 
+
+ 
+
+byte potassium(){
+
+ 
+
+  digitalWrite(DE,HIGH);
+
+ 
+
+  digitalWrite(RE,HIGH);
+
+ 
+
+  delay(10);
+
+ 
+
+  if(mod.write(pota,sizeof(pota))==8){
+
+ 
+
+    digitalWrite(DE,LOW);
+
+ 
+
+    digitalWrite(RE,LOW);
+
+ 
+
+    for(byte i=0;i<7;i++){
+
+ 
+
+    //Serial.print(mod.read(),HEX);
+
+ 
+
+    values[i] = mod.read();
+
+ 
+
+    Serial.print(values[i],HEX);
+
+ 
+
+    }
+
+ 
+
+    Serial.println();
+
+ 
+
+  }
+
+ 
+
+  return values[4];
+
+ 
+
+}
