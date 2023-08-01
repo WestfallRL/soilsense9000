@@ -4,7 +4,6 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 
- 
 
 // RE and DE Pins set the RS485 module
 // to Receiver or Transmitter mode
@@ -91,17 +90,21 @@ void setup() {
 
  delay(500);
 
- //ESP-NOW
+ // ESP-NOW
  // Init Serial Monitor //set refer to line 25
  // Set device as a Wi-Fi Station
 
  WiFi.mode(WIFI_STA);
  int32_t channel = getWiFiChannel(WIFI_SSID);
+
+
  WiFi.printDiag(Serial); // Uncomment to verify channel number before
- sp_wifi_set_promiscuous(true);
+ esp_wifi_set_promiscuous(true);
  esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
  esp_wifi_set_promiscuous(false);
  WiFi.printDiag(Serial); // Uncomment to verify channel change after
+ WiFi.printDiag(Serial); // Uncomment to verify channel number before
+
 
 
  // Init ESP-NOW
