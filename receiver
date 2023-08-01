@@ -1,0 +1,98 @@
+#include <esp_now.h>
+#include <WiFi.h>
+#include "ThingSpeak.h"
+
+const char* ssid = "Peter's Phone";   // your network SSID (name)
+const char* password = "testing123";   // your network password
+
+WiFiClient  client;
+unsigned long myChannelNumber = 2;
+const char * myWriteAPIKey = "8RIB1VCD6U5IXL09";
+
+// Timer variables
+unsigned long lastTime = 0;
+unsigned long timerDelay = 30000;
+
+// Structure example to receive data
+// Must match the sender structure
+
+typedef struct struct_message {
+  byte nitrogen;
+  byte phosphorous;
+  byte potassium;
+  int moisture_val;
+} struct_message;
+
+// Create a struct_message called myData
+
+struct_message myData;
+
+// callback function that will be executed when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  // Copy Data
+  memcpy(&myData, incomingData, sizeof(myData));
+  
+  //n,p,k = 255 means sensor not powered correctly, moisture = 100 sensor means disconnected
+  Serial.print("Bytes received: ");
+  Serial.println(len);
+  Serial.print("n: ");
+  Serial.println(myData.nitrogen);
+  Serial.print("p: ");
+  Serial.println(myData.phosphorous);
+  Serial.print("k: ");
+  Serial.println(myData.potassium);
+  Serial.print("Moisture = ");
+  Serial.print(myData.moisture_val);
+  Serial.print("%\n");
+  // Connect or reconnect to WiFi
+}
+
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(9600);
+  // Set the device as a Station and Soft Access Point simultaneously
+  WiFi.mode(WIFI_AP_STA);
+  // Set device as a Wi-Fi Station
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Setting as a Wi-Fi Station..");
+  }
+
+  Serial.print("Station IP Address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Wi-Fi Channel: ");
+  Serial.println(WiFi.channel());
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  // Initialize ThingSpeak
+  ThingSpeak.begin(client);  
+  
+  // Once ESPNow is successfully Init, we will register for recv CB to
+  // get recv packer info
+  esp_now_register_recv_cb(OnDataRecv);
+}
+
+void loop() {
+  
+    // set the fields with the values
+    ThingSpeak.setField(1, myData.moisture_val);
+    ThingSpeak.setField(2, myData.nitrogen);
+    ThingSpeak.setField(3, myData.phosphorous);
+    ThingSpeak.setField(4, myData.potassium);
+
+    // Write to ThingSpeak. There are up to 8 fields in a channel, allowing you to store up to 8 different
+    // pieces of information in a channel.  Here, we write to field 1.
+
+    int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+    if(x == 200){
+      Serial.println("Channel update successful.");
+    }
+    else{
+      Serial.println("Problem updating channel. HTTP error code " + String(x));
+    }
+}
